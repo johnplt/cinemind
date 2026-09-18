@@ -33,16 +33,18 @@ def fetch_movies(pages=2, sort_by="popularity.desc", with_genres=None):
         if response.status_code == 200:
             data = response.json()
             for movie in data.get("results", []):
-                movies.append({
-                    "tmdb_id": movie.get("id"),
-                    "title": movie.get("title"),
-                    "original_title": movie.get("original_title"),
-                    "overview": movie.get("overview"),
-                    "release_date": movie.get("release_date"),
-                    "vote_average": movie.get("vote_average"),
-                    "popularity": movie.get("popularity"),
-                    "poster_path": movie.get("poster_path")
-                })
+                overview = movie.get("overview")
+                if overview and len(overview.strip()) > 20:
+                    movies.append({
+                        "tmdb_id": movie.get("id"),
+                        "title": movie.get("title"),
+                        "original_title": movie.get("original_title"),
+                        "overview": movie.get("overview"),
+                        "release_date": movie.get("release_date"),
+                        "vote_average": movie.get("vote_average"),
+                        "popularity": movie.get("popularity"),
+                        "poster_path": movie.get("poster_path")
+                    })
         else:
             print(f"Erreur HTTP {response.status_code} à la page {page}")
 
