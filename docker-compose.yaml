@@ -1,0 +1,16 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: cinemind_db
+    restart: always
+    environment:
+      POSTGRES_USER: cinemind_user
+      POSTGRES_PASSWORD: cinemind_password
+      POSTGRES_DB: cinemind_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
