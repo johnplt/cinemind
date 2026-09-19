@@ -23,8 +23,6 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 def load_embedding_model():
     return SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 
-embed_model = load_embedding_model()
-
 # --- FONCTIONS UTILITAIRES BASE DE DONNÉES ---
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
@@ -33,6 +31,7 @@ def search_movies(query_text, top_k=5, min_vote=0.0):
     """
     Recherche sémantique avec filtrage dynamique par note minimale.
     """
+    embed_model = load_embedding_model()
     query_vector = embed_model.encode(query_text).tolist()
     search_query = """
         SELECT title, overview, release_date, vote_average, popularity,
@@ -152,6 +151,7 @@ elif navigation == "📊 Agent & Analytics Thématiques":
         )
 
         if theme_query:
+            embed_model = load_embedding_model()
             # Calcul du score de similarité du thème pour chaque film du dataset
             theme_vector = embed_model.encode(theme_query).tolist()
             
