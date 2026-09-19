@@ -92,114 +92,118 @@ def generate_rag_response(user_query, retrieved_movies):
     return response.choices[0].message.content
 
 # --- INTERFACE STREAMLIT ---
+def main():
 
-st.title("🎬 CineMind — Intelligence Cinématographique & RAG")
+    st.title("🎬 CineMind — Intelligence Cinématographique & RAG")
 
-# Sidebar pour les filtres globaux et la navigation
-st.sidebar.header("⚙️ Configuration")
-navigation = st.sidebar.radio("Navigation", ["🔍 Recommandation RAG", "📊 Agent & Analytics Thématiques"])
+    # Sidebar pour les filtres globaux et la navigation
+    st.sidebar.header("⚙️ Configuration")
+    navigation = st.sidebar.radio("Navigation", ["🔍 Recommandation RAG", "📊 Agent & Analytics Thématiques"])
 
-min_rating = st.sidebar.slider("Note minimale du film", 0.0, 10.0, 5.0, 0.5)
+    min_rating = st.sidebar.slider("Note minimale du film", 0.0, 10.0, 5.0, 0.5)
 
-# --- ONGLET 1 : RECOMMANDATION RAG ---
-if navigation == "🔍 Recommandation RAG":
-    st.subheader("Trouvez votre prochain film grâce au RAG Sémantique")
-    user_query = st.text_input("Exemple : 'Un thriller psychologique sombre sur la mémoire'", key="rag_input")
+    # --- ONGLET 1 : RECOMMANDATION RAG ---
+    if navigation == "🔍 Recommandation RAG":
+        st.subheader("Trouvez votre prochain film grâce au RAG Sémantique")
+        user_query = st.text_input("Exemple : 'Un thriller psychologique sombre sur la mémoire'", key="rag_input")
 
-    if st.button("Lancer la recherche", type="primary"):
-        if user_query.strip():
-            with st.spinner("Recherche vectorielle dans PostgreSQL & Analyse Groq..."):
-                results = search_movies(user_query, top_k=3, min_vote=min_rating)
+        if st.button("Lancer la recherche", type="primary"):
+            if user_query.strip():
+                with st.spinner("Recherche vectorielle dans PostgreSQL & Analyse Groq..."):
+                    results = search_movies(user_query, top_k=3, min_vote=min_rating)
 
-                if results:
-                    col1, col2 = st.columns([1, 1])
+                    if results:
+                        col1, col2 = st.columns([1, 1])
 
-                    with col1:
-                        st.markdown("### 🤖 Recommandation CineMind")
-                        ai_response = generate_rag_response(user_query, results)
-                        st.info(ai_response)
+                        with col1:
+                            st.markdown("### 🤖 Recommandation CineMind")
+                            ai_response = generate_rag_response(user_query, results)
+                            st.info(ai_response)
 
-                    with col2:
-                        st.markdown("### 🎯 Films correspondants (PostgreSQL)")
-                        for title, overview, release_date, vote_average, popularity, similarity in results:
-                            with st.expander(f"{title} ({vote_average}/10) — Similarité : {similarity:.1%}"):
-                                st.write(f"**Date de sortie :** {release_date}")
-                                st.write(f"**Popularité :** {popularity}")
-                                st.write(f"**Synopsis :** {overview}")
-                else:
-                    st.warning("Aucun film ne correspond aux critères sélectionnés.")
+                        with col2:
+                            st.markdown("### 🎯 Films correspondants (PostgreSQL)")
+                            for title, overview, release_date, vote_average, popularity, similarity in results:
+                                with st.expander(f"{title} ({vote_average}/10) — Similarité : {similarity:.1%}"):
+                                    st.write(f"**Date de sortie :** {release_date}")
+                                    st.write(f"**Popularité :** {popularity}")
+                                    st.write(f"**Synopsis :** {overview}")
+                    else:
+                        st.warning("Aucun film ne correspond aux critères sélectionnés.")
 
-# --- ONGLET 2 : AGENT & ANALYTICS THÉMATIQUES ---
-elif navigation == "📊 Agent & Analytics Thématiques":
-    st.subheader("Analyses Sémantiques et Tendances du Cinéma")
-    
-    df_movies = get_all_movies_df()
-    
-    if not df_movies.empty:
-        # Métriques clés en haut de page
-        col_m1, col_m2, col_m3 = st.columns(3)
-        col_m1.metric("Films en base", len(df_movies))
-        col_m2.metric("Note moyenne globale", f"{df_movies['vote_average'].mean():.2f}/10")
-        col_m3.metric("Année la plus représentée", int(df_movies['year'].mode()[0]) if not df_movies['year'].dropna().empty else "N/A")
+    # --- ONGLET 2 : AGENT & ANALYTICS THÉMATIQUES ---
+    elif navigation == "📊 Agent & Analytics Thématiques":
+        st.subheader("Analyses Sémantiques et Tendances du Cinéma")
 
-        st.divider()
+        df_movies = get_all_movies_df()
 
-        # Analyse par mot-clé sémantique / thème
-        theme_query = st.text_input(
-            "Analyse de tendance par thème (ex: 'santé mentale', 'écologie', 'science-fiction')",
-            value="santé mentale"
-        )
+        if not df_movies.empty:
+            # Métriques clés en haut de page
+            col_m1, col_m2, col_m3 = st.columns(3)
+            col_m1.metric("Films en base", len(df_movies))
+            col_m2.metric("Note moyenne globale", f"{df_movies['vote_average'].mean():.2f}/10")
+            col_m3.metric("Année la plus représentée", int(df_movies['year'].mode()[0]) if not df_movies['year'].dropna().empty else "N/A")
 
-        if theme_query:
-            embed_model = load_embedding_model()
-            # Calcul du score de similarité du thème pour chaque film du dataset
-            theme_vector = embed_model.encode(theme_query).tolist()
-            
-            # Calcul dynamique de la similarité cosinus avec l'ensemble de la base
-            conn = get_db_connection()
-            query_all = """
-                SELECT tmdb_id, title, release_date, vote_average,
-                       1 - (embedding <=> %s::vector) AS theme_similarity
-                FROM movies
-                WHERE embedding IS NOT NULL;
-            """
-            df_theme = pd.read_sql(query_all, conn, params=(theme_vector,))
-            conn.close()
+            st.divider()
 
-            if not df_theme.empty:
-                df_theme["release_date"] = pd.to_datetime(df_theme["release_date"], errors="coerce")
-                df_theme["year"] = df_theme["release_date"].dt.year
-                
-                # Filtrer les films ayant une présence significative du thème (ex: > 35% de similarité)
-                df_filtered = df_theme[df_theme["theme_similarity"] >= 0.35]
+            # Analyse par mot-clé sémantique / thème
+            theme_query = st.text_input(
+                "Analyse de tendance par thème (ex: 'santé mentale', 'écologie', 'science-fiction')",
+                value="santé mentale"
+            )
 
-                st.markdown(f"### Évolution du thème *'{theme_query}'* dans le cinéma")
-                
-                if not df_filtered.empty:
-                    # Regroupement par année
-                    df_trend = df_filtered.groupby("year").agg(
-                        nombre_de_films=('tmdb_id', 'count'),
-                        note_moyenne=('vote_average', 'mean')
-                    ).reset_index()
+            if theme_query:
+                embed_model = load_embedding_model()
+                # Calcul du score de similarité du thème pour chaque film du dataset
+                theme_vector = embed_model.encode(theme_query).tolist()
 
-                    # Graphique interactif avec Plotly
-                    fig = px.line(
-                        df_trend, 
-                        x="year", 
-                        y="nombre_de_films",
-                        markers=True,
-                        title=f"Nombre de films traitant de '{theme_query}' par année",
-                        labels={"year": "Année", "nombre_de_films": "Nombre de films"},
-                        template="plotly_white"
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
+                # Calcul dynamique de la similarité cosinus avec l'ensemble de la base
+                conn = get_db_connection()
+                query_all = """
+                    SELECT tmdb_id, title, release_date, vote_average,
+                           1 - (embedding <=> %s::vector) AS theme_similarity
+                    FROM movies
+                    WHERE embedding IS NOT NULL;
+                """
+                df_theme = pd.read_sql(query_all, conn, params=(theme_vector,))
+                conn.close()
 
-                    st.markdown("#### Films les plus représentatifs du thème :")
-                    st.dataframe(
-                        df_filtered.sort_values(by="theme_similarity", ascending=False)[["title", "year", "vote_average", "theme_similarity"]].head(10),
-                        use_container_width=True
-                    )
-                else:
-                    st.info(f"Aucun film dans votre échantillon actuel ne dépasse le seuil de similarité pour le thème '{theme_query}'.")
-    else:
-        st.warning("Aucune donnée disponible dans la base de données.")
+                if not df_theme.empty:
+                    df_theme["release_date"] = pd.to_datetime(df_theme["release_date"], errors="coerce")
+                    df_theme["year"] = df_theme["release_date"].dt.year
+
+                    # Filtrer les films ayant une présence significative du thème (ex: > 35% de similarité)
+                    df_filtered = df_theme[df_theme["theme_similarity"] >= 0.35]
+
+                    st.markdown(f"### Évolution du thème *'{theme_query}'* dans le cinéma")
+
+                    if not df_filtered.empty:
+                        # Regroupement par année
+                        df_trend = df_filtered.groupby("year").agg(
+                            nombre_de_films=('tmdb_id', 'count'),
+                            note_moyenne=('vote_average', 'mean')
+                        ).reset_index()
+
+                        # Graphique interactif avec Plotly
+                        fig = px.line(
+                            df_trend, 
+                            x="year", 
+                            y="nombre_de_films",
+                            markers=True,
+                            title=f"Nombre de films traitant de '{theme_query}' par année",
+                            labels={"year": "Année", "nombre_de_films": "Nombre de films"},
+                            template="plotly_white"
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        st.markdown("#### Films les plus représentatifs du thème :")
+                        st.dataframe(
+                            df_filtered.sort_values(by="theme_similarity", ascending=False)[["title", "year", "vote_average", "theme_similarity"]].head(10),
+                            use_container_width=True
+                        )
+                    else:
+                        st.info(f"Aucun film dans votre échantillon actuel ne dépasse le seuil de similarité pour le thème '{theme_query}'.")
+        else:
+            st.warning("Aucune donnée disponible dans la base de données.")
+
+if __name__ == "__main__":
+    main()
