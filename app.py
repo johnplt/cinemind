@@ -25,7 +25,10 @@ def load_embedding_model():
 
 # --- FONCTIONS UTILITAIRES BASE DE DONNÉES ---
 def get_db_connection():
-    return psycopg2.connect(DATABASE_URL)
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise ValueError("La variable d'environnement DATABASE_URL est introuvable ou non définie.")
+    return psycopg2.connect(database_url)
 
 def search_movies(query_text, top_k=5, min_vote=0.0):
     """
