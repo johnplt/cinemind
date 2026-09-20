@@ -15,4 +15,4 @@ RUN uv sync --frozen --no-cache
 COPY . .
 
 # Définition de l'entrée : on pointe directement sur l'exécutable streamlit de l'environnement virtuel
-CMD [".venv/bin/streamlit", "run", "app.py", "--server.address=0.0.0.0"]
+CMD uv run streamlit run app.py --server.port=${PORT:-8501} --server.address=0.0.0.0
