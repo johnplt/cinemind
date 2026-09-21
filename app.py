@@ -105,10 +105,20 @@ def main():
 
     min_rating = st.sidebar.slider("Note minimale du film", 0.0, 10.0, 5.0, 0.5)
 
+    # --- INFORMATIONS BASE DE DONNÉES & ROADMAP ---
+    st.sidebar.divider()
+    st.sidebar.subheader("État du Dataset")
+    st.sidebar.warning(
+        "Les résultats dépendent de l'échantillon actuel (**682 films**)."
+    )
+    st.sidebar.caption(
+        "**Prochaine version :** Intégration d'un pipeline d'alimentation hebdomadaire automatisé."
+    )
+
     # --- ONGLET 1 : RECOMMANDATION RAG ---
     if navigation == "🔍 Recommandation RAG":
         st.subheader("Trouvez votre prochain film grâce au RAG Sémantique")
-        user_query = st.text_input("Exemple : 'Un thriller psychologique sombre sur la mémoire'", key="rag_input")
+        user_query = st.text_input("Exemple : 'Une quête épique mais menée par un groupe de héros qui ne se supportent pas du tout'", key="rag_input")
 
         if st.button("Lancer la recherche", type="primary"):
             if user_query.strip():
@@ -150,9 +160,12 @@ def main():
 
             # Analyse par mot-clé sémantique / thème
             theme_query = st.text_input(
-                "Analyse de tendance par thème (ex: 'santé mentale', 'écologie', 'science-fiction')",
-                value="santé mentale"
+                "Analyse de tendance par thème (ex: 'Cinéma Action', 'Thriller & Suspense', 'Aventure & Fantasy')",
+                value="Aventure & Fantasy"  # <--- Exemple mis à jour
             )
+
+            # Rappel de la taille du dataset sous la barre de recherche
+            st.caption("ℹ️ *Analyse calculée dynamiquement sur l'échantillon actuel de 682 films.*")
 
             if theme_query:
                 embed_model = load_embedding_model()
