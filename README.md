@@ -1,5 +1,7 @@
 # CineMind — Moteur de Recommandation de Films par Recherche Vectorielle (RAG)
 
+![Texte alternatif](docs/images/cinemind_image.jpg)
+
 CineMind est une application web interactive qui permet de recommander des films en fonction de requêtes en langage naturel (ex: *"un film de science-fiction sombre avec une fin inattendue"*). 
 
 Le projet s'appuie sur une approche RAG (Retrieval-Augmented Generation) combinant **PostgreSQL + pgvector** pour la recherche de similarité vectorielle et **Streamlit** pour la présentation graphique.
