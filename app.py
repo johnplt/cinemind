@@ -64,6 +64,20 @@ def get_all_movies_df():
         df["year"] = df["release_date"].dt.year
     return df
 
+def get_movie_count():
+    """
+    Récupère le nombre total de films enregistrés en BDD.
+    """
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM movies WHERE overview IS NOT NULL;")
+            count = cur.fetchone()[0]
+        conn.close()
+        return count
+    except Exception:
+        return 0
+
 def generate_rag_response(user_query, retrieved_movies):
     """
     Génération de la réponse via l'API Groq.
@@ -105,14 +119,17 @@ def main():
 
     min_rating = st.sidebar.slider("Note minimale du film", 0.0, 10.0, 5.0, 0.5)
 
-    # --- INFORMATIONS BASE DE DONNÉES & ROADMAP ---
+    # --- INFORMATIONS BASE DE DONNÉES ---
     st.sidebar.divider()
-    st.sidebar.subheader("État du Dataset")
-    st.sidebar.warning(
-        "Les résultats dépendent de l'échantillon actuel (**682 films**)."
+    st.sidebar.subheader("📊 État du Catalogue")
+    
+    movie_count = get_movie_count()
+    
+    st.sidebar.info(
+        f"Base actuelle : **{movie_count:,} films**".replace(",", " ")
     )
     st.sidebar.caption(
-        "**Prochaine version :** Intégration d'un pipeline d'alimentation hebdomadaire automatisé."
+        "🔄 **Pipeline ETL :** Catalogue synchronisé et enrichi automatiquement chaque semaine via TMDB."
     )
 
     # --- ONGLET 1 : RECOMMANDATION RAG ---
@@ -165,7 +182,7 @@ def main():
             )
 
             # Rappel de la taille du dataset sous la barre de recherche
-            st.caption("ℹ️ *Analyse calculée dynamiquement sur l'échantillon actuel de 682 films.*")
+            st.caption(f"ℹ️ *Analyse calculée dynamiquement sur l'échantillon actuel de {len(df_movies)} films.*")
 
             if theme_query:
                 embed_model = load_embedding_model()
