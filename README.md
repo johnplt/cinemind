@@ -8,25 +8,45 @@ Le projet s'appuie sur une approche RAG (Retrieval-Augmented Generation) combina
 
 ---
 
-## Architecture du Projet
+## Architecture globale et workflow CI/CD 
 
-L'application est déployée sur **Railway** au sein d'un projet consolidé pour garantir une communication réseau interne sécurisée via `.railway.internal`.
+```mermaid
+flowchart LR
+    %% Styles avec texte noir et gras
+    classDef dev fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#000000,font-weight:bold;
+    classDef cicd fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#000000,font-weight:bold;
+    classDef cloud fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#000000,font-weight:bold;
 
-```text
-               +-------------------------------------------+
-               |              Railway Project              |
-               |                                           |
-               |  +------------------+  .railway.internal  |
-User Request ->|  |   Streamlit Web  | ----------------->  |
-               |  |  (cinemind-web)  |    Port: 5432       |
-               |  +------------------+                     |
-               |                               |           |
-               |                               v           |
-               |                    +--------------------+ |
-               |                    | PostgreSQL + Vector| |
-               |                    +--------------------+ |
-               +-------------------------------------------+
+    subgraph DEV["<b>💻 Environnement de Développement</b>"]
+        Code["<b>Code Source</b><br/>(Python, JS...)"]
+        DockerDev["<b>Conteneurisation</b><br/>(Docker, uv)"]
+    end
+
+    subgraph CICD["<b>⚙️ Intégration & Déploiement Continu (CI/CD)</b>"]
+        Git["<b>Gestion de Version</b><br/>(GitHub)"]
+        Pipeline["<b>Automatisations & Tests</b><br/>(GitHub Actions)"]
+    end
+
+    subgraph CLOUD["<b>☁️ Infrastructure Cloud (ex: Railway)</b>"]
+        App["<b>Service Applicatif / Web</b><br/>(Streamlit, FastAPI)"]
+        Cron["<b>Tâches Planifiées</b><br/>(Cron Jobs)"]
+        BDD[("<b>Base de Données / Fichiers</b><br/>(PostgreSQL, pgvector)")]
+    end
+
+    Code --> DockerDev
+    DockerDev -->|Push Code| Git
+    Git --> Pipeline
+    Pipeline -->|Deploy| App
+    Pipeline -->|Deploy| Cron
+    App <--> BDD
+    Cron -->|Ingestion / ETL| BDD
+
+    class DEV dev;
+    class CICD cicd;
+    class CLOUD cloud;
 ```
+
+Vue d'ensemble de l'architecture applicative : conteneurisation locale, gestion du code et CI/CD sur GitHub, et déploiement managé sur Railway avec persistence PostgreSQL.
 
 ## Structure du Dépôt
 
