@@ -27,7 +27,7 @@ def fetch_movies_from_api(url_params, pages=5):
         # Ajout de la page aux paramètres
         url_params["page"] = page
         
-        response = requests.get(f"{BASE_URL}/discover/movie", headers=headers, params=url_params)
+        response = requests.get(f"{BASE_URL}/discover/movie", headers=headers, params=url_params, timeout=10)
         
         if response.status_code == 200:
             data = response.json()
