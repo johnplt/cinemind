@@ -6,6 +6,7 @@ import streamlit as st
 from dotenv import load_dotenv
 from groq import Groq
 from sentence_transformers import SentenceTransformer
+from scripts.rag_recommend import generate_rag_response
 
 # --- CONFIGURATION DE LA PAGE STREAMLIT ---
 st.set_page_config(
@@ -18,7 +19,7 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# --- CHARGEMENT DU MODÈLE EN SINGLETON (Chargé une seule fois en mémoire) ---
+# --- CHARGEMENT DU MODÈLE EN SINGLETON ---
 @st.cache_resource
 def load_embedding_model():
     return SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
@@ -32,7 +33,7 @@ def get_db_connection():
 
 def search_movies(query_text, top_k=5, min_vote=0.0):
     """
-    Recherche sémantique avec filtrage dynamique par note minimale.
+    Recherche sémantique avec gestion sécurisée de la connexion BDD.
     """
     embed_model = load_embedding_model()
     query_vector = embed_model.encode(query_text).tolist()
@@ -44,93 +45,69 @@ def search_movies(query_text, top_k=5, min_vote=0.0):
         ORDER BY embedding <=> %s::vector ASC
         LIMIT %s;
     """
-    conn = get_db_connection()
-    with conn.cursor() as cur:
-        cur.execute(search_query, (query_vector, min_vote, query_vector, top_k))
-        results = cur.fetchall()
-    conn.close()
-    return results
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute(search_query, (query_vector, min_vote, query_vector, top_k))
+            results = cur.fetchall()
+        return results
+    finally:
+        if conn:
+            conn.close()
 
+@st.cache_data(ttl=3600)
 def get_all_movies_df():
     """
-    Récupère l'ensemble des films pour le volet Analytics.
+    Récupère l'ensemble des films avec mise en cache (1h).
     """
-    conn = get_db_connection()
-    query = "SELECT title, overview, release_date, vote_average, popularity FROM movies WHERE overview IS NOT NULL;"
-    df = pd.read_sql(query, conn)
-    conn.close()
-    if not df.empty and "release_date" in df.columns:
-        df["release_date"] = pd.to_datetime(df["release_date"], errors="coerce")
-        df["year"] = df["release_date"].dt.year
-    return df
+    conn = None
+    try:
+        conn = get_db_connection()
+        query = "SELECT title, overview, release_date, vote_average, popularity FROM movies WHERE overview IS NOT NULL;"
+        df = pd.read_sql(query, conn)
+        if not df.empty and "release_date" in df.columns:
+            df["release_date"] = pd.to_datetime(df["release_date"], errors="coerce")
+            df["year"] = df["release_date"].dt.year
+        return df
+    finally:
+        if conn:
+            conn.close()
 
+@st.cache_data(ttl=1800)
 def get_movie_count():
     """
-    Récupère le nombre total de films enregistrés en BDD.
+    Récupère le nombre total de films avec mise en cache (30 min).
     """
+    conn = None
     try:
         conn = get_db_connection()
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM movies WHERE overview IS NOT NULL;")
             count = cur.fetchone()[0]
-        conn.close()
         return count
     except Exception:
         return 0
-
-def generate_rag_response(user_query, retrieved_movies):
-    """
-    Génération de la réponse via l'API Groq.
-    """
-    if not GROQ_API_KEY:
-        return "Clé API Groq manquante."
-
-    client = Groq(api_key=GROQ_API_KEY)
-    context = ""
-    for i, (title, overview, release_date, vote_average, popularity, similarity) in enumerate(retrieved_movies, 1):
-        context += f"\n--- Film {i} ---\nTitre: {title}\nDate: {release_date}\nNote: {vote_average}/10\nSynopsis: {overview}\n"
-
-    system_prompt = (
-        "Tu es CineMind, un assistant cinématographique expert. "
-        "Analyse les films du contexte et recommande le meilleur choix. "
-        "Sois structuré, synthétique et captivant."
-    )
-    user_prompt = f"Demande : '{user_query}'\n\nContexte :\n{context}"
-
-    response = client.chat.completions.create(
-        model="openai/gpt-oss-20b",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        temperature=0.7,
-        max_tokens=600
-    )
-    return response.choices[0].message.content
+    finally:
+        if conn:
+            conn.close()
 
 # --- INTERFACE STREAMLIT ---
 def main():
 
     st.title("🎬 CineMind — Intelligence Cinématographique & RAG")
 
-    # Sidebar pour les filtres globaux et la navigation
     st.sidebar.header("⚙️ Configuration")
     navigation = st.sidebar.radio("Navigation", ["🔍 Recommandation RAG", "📊 Agent & Analytics Thématiques"])
 
     min_rating = st.sidebar.slider("Note minimale du film", 0.0, 10.0, 5.0, 0.5)
 
-    # --- INFORMATIONS BASE DE DONNÉES ---
     st.sidebar.divider()
     st.sidebar.subheader("📊 État du Catalogue")
     
     movie_count = get_movie_count()
-    
-    st.sidebar.info(
-        f"Base actuelle : **{movie_count:,} films**".replace(",", " ")
-    )
-    st.sidebar.caption(
-        "🔄 **Pipeline ETL :** Catalogue synchronisé et enrichi automatiquement chaque semaine via TMDB."
-    )
+    st.sidebar.info(f"Base actuelle : **{movie_count:,} films**".replace(",", " "))
+    st.sidebar.caption("🔄 **Pipeline ETL :** Catalogue synchronisé et enrichi automatiquement chaque semaine via TMDB.")
 
     # --- ONGLET 1 : RECOMMANDATION RAG ---
     if navigation == "🔍 Recommandation RAG":
@@ -152,10 +129,15 @@ def main():
 
                         with col2:
                             st.markdown("### 🎯 Films correspondants (PostgreSQL)")
-                            for title, overview, release_date, vote_average, popularity, similarity in results:
+                            for movie in results:
+                                # Gestion flexible 5 ou 6 colonnes
+                                if len(movie) == 6:
+                                    title, overview, release_date, vote_average, popularity, similarity = movie
+                                else:
+                                    title, overview, release_date, vote_average, similarity = movie
+
                                 with st.expander(f"{title} ({vote_average}/10) — Similarité : {similarity:.1%}"):
                                     st.write(f"**Date de sortie :** {release_date}")
-                                    st.write(f"**Popularité :** {popularity}")
                                     st.write(f"**Synopsis :** {overview}")
                     else:
                         st.warning("Aucun film ne correspond aux critères sélectionnés.")
@@ -167,7 +149,6 @@ def main():
         df_movies = get_all_movies_df()
 
         if not df_movies.empty:
-            # Métriques clés en haut de page
             col_m1, col_m2, col_m3 = st.columns(3)
             col_m1.metric("Films en base", len(df_movies))
             col_m2.metric("Note moyenne globale", f"{df_movies['vote_average'].mean():.2f}/10")
@@ -175,48 +156,48 @@ def main():
 
             st.divider()
 
-            # Analyse par mot-clé sémantique / thème
             theme_query = st.text_input(
                 "Analyse de tendance par thème (ex: 'Cinéma Action', 'Thriller & Suspense', 'Aventure & Fantasy')",
-                value="Aventure & Fantasy"  # <--- Exemple mis à jour
+                value="Aventure & Fantasy"
             )
 
-            # Rappel de la taille du dataset sous la barre de recherche
             st.caption(f"ℹ️ *Analyse calculée dynamiquement sur l'échantillon actuel de {len(df_movies)} films.*")
 
             if theme_query:
                 embed_model = load_embedding_model()
-                # Calcul du score de similarité du thème pour chaque film du dataset
                 theme_vector = embed_model.encode(theme_query).tolist()
 
-                # Calcul dynamique de la similarité cosinus avec l'ensemble de la base
-                conn = get_db_connection()
+                # Requête optimisée avec limitation SQL pour soulager le serveur
                 query_all = """
                     SELECT tmdb_id, title, release_date, vote_average,
                            1 - (embedding <=> %s::vector) AS theme_similarity
                     FROM movies
-                    WHERE embedding IS NOT NULL;
+                    WHERE embedding IS NOT NULL
+                    ORDER BY embedding <=> %s::vector ASC
+                    LIMIT 1000;
                 """
-                df_theme = pd.read_sql(query_all, conn, params=(theme_vector,))
-                conn.close()
+                conn = None
+                try:
+                    conn = get_db_connection()
+                    df_theme = pd.read_sql(query_all, conn, params=(theme_vector, theme_vector))
+                finally:
+                    if conn:
+                        conn.close()
 
                 if not df_theme.empty:
                     df_theme["release_date"] = pd.to_datetime(df_theme["release_date"], errors="coerce")
                     df_theme["year"] = df_theme["release_date"].dt.year
 
-                    # Filtrer les films ayant une présence significative du thème (ex: > 35% de similarité)
                     df_filtered = df_theme[df_theme["theme_similarity"] >= 0.35]
 
                     st.markdown(f"### Évolution du thème *'{theme_query}'* dans le cinéma")
 
                     if not df_filtered.empty:
-                        # Regroupement par année
                         df_trend = df_filtered.groupby("year").agg(
                             nombre_de_films=('tmdb_id', 'count'),
                             note_moyenne=('vote_average', 'mean')
                         ).reset_index()
 
-                        # Graphique interactif avec Plotly
                         fig = px.line(
                             df_trend, 
                             x="year", 

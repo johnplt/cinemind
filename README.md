@@ -46,7 +46,7 @@ flowchart LR
     class CLOUD cloud;
 ```
 
-Vue d'ensemble de l'architecture applicative : conteneurisation locale, gestion du code et CI/CD sur GitHub, et déploiement managé sur Railway avec persistence PostgreSQL.
+Vue d'ensemble de l'architecture applicative : conteneurisation locale, gestion du code et CI/CD sur GitHub, et déploiement managé sur Cloud avec persistence PostgreSQL.
 
 ## Structure du Dépôt
 
@@ -83,7 +83,7 @@ Suivre ces étapes pour installer et exécuter CineMind sur son propre environne
 1. Pré-requis
     - Python 3.10+
 
-    - Un compte Railway (ou un serveur PostgreSQL local avec l'extension pgvector)
+    - Un provider Cloud (ou un serveur PostgreSQL local avec l'extension pgvector)
 
     - Git/Github
 
