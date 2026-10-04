@@ -4,8 +4,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from dotenv import load_dotenv
-from groq import Groq
-from sentence_transformers import SentenceTransformer
+from huggingface_hub import InferenceClient
 from scripts.rag_recommend import generate_rag_response
 
 # --- CONFIGURATION DE LA PAGE STREAMLIT ---
@@ -18,25 +17,45 @@ st.set_page_config(
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+HF_TOKEN = os.getenv("HF_TOKEN")
 
-# --- CHARGEMENT DU MODÈLE EN SINGLETON ---
+MODEL_ID = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+
+# --- CLIENT HUGGING FACE (SERVERLESS EMBEDDINGS) ---
 @st.cache_resource
-def load_embedding_model():
-    return SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+def get_hf_client():
+    """Initialise le client d'inférence Hugging Face."""
+    return InferenceClient(token=HF_TOKEN)
+
+def get_embedding(text: str) -> list:
+    """Génère l'embedding vectoriel via l'API Serverless de Hugging Face."""
+    client = get_hf_client()
+    embedding = client.feature_extraction(text, model=MODEL_ID)
+    
+    # Formatage de la réponse selon le retour de l'API (NumPy array ou listes imbriquées)
+    if hasattr(embedding, "tolist"):
+        embedding = embedding.tolist()
+    if isinstance(embedding, list) and len(embedding) > 0 and isinstance(embedding[0], list):
+        embedding = embedding[0]
+        
+    return embedding
 
 # --- FONCTIONS UTILITAIRES BASE DE DONNÉES ---
 def get_db_connection():
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         raise ValueError("La variable d'environnement DATABASE_URL est introuvable ou non définie.")
+    
+    # Activer le SSL pour Supabase/Render
+    if "localhost" not in database_url and "127.0.0.1" not in database_url:
+        return psycopg2.connect(database_url, sslmode="require")
     return psycopg2.connect(database_url)
 
 def search_movies(query_text, top_k=5, min_vote=0.0):
     """
-    Recherche sémantique avec gestion sécurisée de la connexion BDD.
+    Recherche sémantique via l'embedding Hugging Face et PostgreSQL (pgvector).
     """
-    embed_model = load_embedding_model()
-    query_vector = embed_model.encode(query_text).tolist()
+    query_vector = get_embedding(query_text)
     search_query = """
         SELECT title, overview, release_date, vote_average, popularity,
                1 - (embedding <=> %s::vector) AS similarity
@@ -107,7 +126,7 @@ def main():
     
     movie_count = get_movie_count()
     st.sidebar.info(f"Base actuelle : **{movie_count:,} films**".replace(",", " "))
-    st.sidebar.caption("🔄 **Pipeline ETL :** Catalogue synchronisé et enrichi automatiquement chaque semaine via TMDB.")
+    st.sidebar.caption("🔄 **Pipeline ETL :** Catalogue synchronisé et enrichi automatiquement via TMDB.")
 
     # --- ONGLET 1 : RECOMMANDATION RAG ---
     if navigation == "🔍 Recommandation RAG":
@@ -116,7 +135,7 @@ def main():
 
         if st.button("Lancer la recherche", type="primary"):
             if user_query.strip():
-                with st.spinner("Recherche vectorielle dans PostgreSQL & Analyse Groq..."):
+                with st.spinner("Recherche vectorielle (Hugging Face API) & Analyse Groq..."):
                     results = search_movies(user_query, top_k=3, min_vote=min_rating)
 
                     if results:
@@ -130,11 +149,7 @@ def main():
                         with col2:
                             st.markdown("### 🎯 Films correspondants (PostgreSQL)")
                             for movie in results:
-                                # Gestion flexible 5 ou 6 colonnes
-                                if len(movie) == 6:
-                                    title, overview, release_date, vote_average, popularity, similarity = movie
-                                else:
-                                    title, overview, release_date, vote_average, similarity = movie
+                                title, overview, release_date, vote_average, popularity, similarity = movie
 
                                 with st.expander(f"{title} ({vote_average}/10) — Similarité : {similarity:.1%}"):
                                     st.write(f"**Date de sortie :** {release_date}")
@@ -164,10 +179,8 @@ def main():
             st.caption(f"ℹ️ *Analyse calculée dynamiquement sur l'échantillon actuel de {len(df_movies)} films.*")
 
             if theme_query:
-                embed_model = load_embedding_model()
-                theme_vector = embed_model.encode(theme_query).tolist()
+                theme_vector = get_embedding(theme_query)
 
-                # Requête optimisée avec limitation SQL pour soulager le serveur
                 query_all = """
                     SELECT tmdb_id, title, release_date, vote_average,
                            1 - (embedding <=> %s::vector) AS theme_similarity

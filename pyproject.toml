@@ -11,14 +11,5 @@ dependencies = [
     "psycopg2-binary>=2.9.13",
     "python-dotenv>=1.2.3",
     "requests>=2.34.2",
-    "sentence-transformers>=6.0.1",
-    "streamlit>=1.64.0",
+    "streamlit>=1.64.0"
 ]
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
-
-[tool.uv.sources]
-torch = { index = "pytorch-cpu" }
