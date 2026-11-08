@@ -21,7 +21,6 @@ def get_db_connection():
             "DATABASE_URL manquante dans les variables d'environnement."
         )
 
-    # Sur Supabase, s'assurer que sslmode est géré correctement
     db_url = DATABASE_URL
 
     return psycopg2.connect(db_url)

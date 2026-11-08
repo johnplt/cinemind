@@ -46,9 +46,6 @@ def get_db_connection():
     if not database_url:
         raise ValueError("La variable d'environnement DATABASE_URL est introuvable ou non définie.")
     
-    # Activer le SSL pour Supabase/Render
-    if "localhost" not in database_url and "127.0.0.1" not in database_url:
-        return psycopg2.connect(database_url, sslmode="require")
     return psycopg2.connect(database_url)
 
 def search_movies(query_text, top_k=5, min_vote=0.0):
