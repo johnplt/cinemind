@@ -1,23 +1,23 @@
 FROM python:3.12-slim
 
-# Installer les outils de compilation nécessaires pour certains paquets (comme httptools)
+# Installer les outils de base si besoin
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy uv binary
+# Copier le binaire uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
-# Copie des fichiers de dépendances
+# Copier les fichiers de dépendances
 COPY pyproject.toml uv.lock ./
 
-# Installation des dépendances dans l'environnement virtuel (.venv)
-RUN uv sync --frozen --no-cache
+# Forcer uv à utiliser l'interpréteur python3.12 du système sans en télécharger un autre
+RUN uv sync --frozen --no-cache --python python3.12
 
-# Copie du reste du code
+# Copier le reste du code
 COPY . .
 
-# Définition de l'entrée : on pointe directement sur l'exécutable streamlit de l'environnement virtuel
+# Lancer streamlit
 CMD [".venv/bin/streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
