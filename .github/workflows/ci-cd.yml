@@ -1,0 +1,85 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  # --- 1. LA PARTIE CI (Tests / Validation) ---
+  ci-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # SCAN DE SECRETS (TruffleHog)
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+        env:
+          UV_PYTHON: "3.13"
+
+      - name: Basic Syntax Check
+        run: uv run python -m compileall scripts/
+
+      # SCAN DOS & SÉCURITÉ CODE (Bandit)
+      - name: Scan des faiblesses de code (Bandit)
+        run: uvx bandit -r . -x ./.venv -ll
+
+      # SCAN DE VULNÉRABILITÉS (Trivy)
+      - name: Scan des vulnérabilités (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+
+  # --- 2. LA PARTIE CD (Build Docker & Déploiement VM) ---
+  cd-deploy:
+    needs: ci-checks # <--- LE SECRET EST LÀ : Ce job attend que 'ci-checks' réussisse à 100%
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:latest
+
+      - name: Deploy to Hetzner VM via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            cd /opt/apps/cinemind
+            git pull origin main
+            docker pull ghcr.io/${{ github.repository }}:latest
+            docker stop cinemind-app || true
+            docker rm cinemind-app || true
+            docker run -d --name cinemind-app --restart always -p 8501:8501 --env-file /opt/apps/cinemind/.env --network app-network ghcr.io/${{ github.repository }}:latest

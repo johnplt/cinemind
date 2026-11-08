@@ -18,152 +18,98 @@ flowchart LR
     classDef cloud fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#000000,font-weight:bold;
 
     subgraph DEV["<b>💻 Environnement de Développement</b>"]
-        Code["<b>Code Source</b><br/>(Python, JS...)"]
-        DockerDev["<b>Conteneurisation</b><br/>(Docker, uv)"]
+        Code["<b>Code Source</b><br/>(Python, Streamlit)"]
+        DockerDev["<b>Gestion des dépendances</b><br/>(uv)"]
     end
 
     subgraph CICD["<b>⚙️ Intégration & Déploiement Continu (CI/CD)</b>"]
         Git["<b>Gestion de Version</b><br/>(GitHub)"]
-        Pipeline["<b>Automatisations & Tests</b><br/>(GitHub Actions)"]
+        Pipeline["<b>Pipeline & Sécurité</b><br/>(GitHub Actions, Gitleaks, Bandit, Trivy)"]
+        Registry["<b>Registre d'images</b><br/>(GitHub Container Registry - GHCR)"]
     end
 
-    subgraph CLOUD["<b>☁️ Infrastructure Cloud (ex: Railway)</b>"]
-        App["<b>Service Applicatif / Web</b><br/>(Streamlit, FastAPI)"]
-        Cron["<b>Tâches Planifiées</b><br/>(Cron Jobs)"]
-        BDD[("<b>Base de Données / Fichiers</b><br/>(PostgreSQL, pgvector)")]
+    subgraph CLOUD["<b>☁️ Infrastructure Cloud (VM Hetzner)</b>"]
+        App["<b>Service Applicatif</b><br/>(Docker Container Streamlit)"]
+        BDD[("<b>Base de Données partagée</b><br/>(PostgreSQL, pgvector)")]
     end
 
     Code --> DockerDev
     DockerDev -->|Push Code| Git
     Git --> Pipeline
-    Pipeline -->|Deploy| App
-    Pipeline -->|Deploy| Cron
+    Pipeline -->|Build & Push| Registry
+    Registry -->|Docker Pull / Deploy| App
     App <--> BDD
-    Cron -->|Ingestion / ETL| BDD
 
     class DEV dev;
     class CICD cicd;
     class CLOUD cloud;
 ```
 
-Vue d'ensemble de l'architecture applicative : conteneurisation locale, gestion du code et CI/CD sur GitHub, et déploiement managé sur Cloud avec persistence PostgreSQL.
+Vue d'ensemble de l'architecture : pipeline CI/CD sécurisé sur GitHub Actions, stockage de l'image sur le registre GHCR, et déploiement automatisé sur une VM Hetzner connectée à une base de données PostgreSQL/pgvector mutualisée.
 
 ## Structure du Dépôt
 
 ```text
+├── .github/workflows
+│   └── ci-cd.yml
 ├── app.py
 ├── data
 │   └── sample_movies.csv
-├── docker-compose.yaml
-├── DockerFile
+├── Dockerfile
 ├── pyproject.toml
 ├── README.md
 ├── scripts
 │   ├── extract_tmdb.py
-│   ├── generate_embeddings.py
-│   ├── ingest_to_db.py
-│   ├── rag_recommend.py
-│   ├── search_movies.py
-│   └── test_groq.py
+│   ├── ingest_and_embed.py
+│   └── ...
 └── uv.lock
 ```
 
 ## Spécifications Techniques
-- Base de données : PostgreSQL avec extension pgvector.
+
+- Base de données : PostgreSQL avec l'extension pgvector.
 
 - Modèle d'embedding : Sentence-Transformers (all-MiniLM-L6-v2) — Vecteurs de 384 dimensions.
 
 - Indexation : Indexation HNSW (vector_cosine_ops) pour optimiser la recherche par distance cosinus.
 
+- Gestionnaire de paquets : uv pour des installations ultra-rapides.
+
 - Interface : Streamlit.
+
+- CI/CD : GitHub Actions (Gitleaks, Bandit, Trivy, Build GHCR, Déploiement SSH).
 
 ## Guide de Déploiement / Reproduire le Projet
 Suivre ces étapes pour installer et exécuter CineMind sur son propre environnement.
 
-1. Pré-requis
-    - Python 3.10+
-
-    - Un provider Cloud (ou un serveur PostgreSQL local avec l'extension pgvector)
-
-    - Git/Github
-
-2. Installation locale (avec uv)
+1. Déploiement local
 
 ```bash
 # Cloner le dépôt
-git clone url
+git clone [https://github.com/johnplt/cinemind.git](https://github.com/johnplt/cinemind.git)
 cd cinemind
 
-# Créer l'environnement virtuel et installer les dépendances avec uv
-uv sync
+# Synchroniser les dépendances
+uv sync --all-extras --dev
 ```
 
+2. Pipeline CI/CD (GitHub Actions)
+Le projet dispose d'un pipeline unifié (.github/workflows/ci-cd.yml) qui s'exécute automatiquement à chaque push sur la branche main :
 
-3. Configuration de la Base de Données sur Railway
+1. CI (Tests & Sécurité) :
 
-    1. Créer un nouveau projet sur Railway.
+    - Scan des secrets (Gitleaks).Licence
+Projet sous licence MIT. Libre réutilisation et modification.
 
-    2. Ajouter un service PostgreSQL.
+    - Installation et synchronisation des dépendances avec uv.
 
-    3. Dans l'onglet Query du service PostgreSQL sur Railway, exécuter le script schema.sql suivant :
+    - Vérification de la syntaxe Python et scan des vulnérabilités de code (Bandit, Trivy).
 
-```sql
--- 1. Activation de l'extension vector
-CREATE EXTENSION IF NOT EXISTS vector;
--- 2. Création de la table movies
-CREATE TABLE IF NOT EXISTS movies (
-    tmdb_id INTEGER PRIMARY KEY,
-    title VARCHAR(255) NOT NULL,
-    original_title VARCHAR(255),
-    overview TEXT,
-    release_date DATE,
-    vote_average DOUBLE PRECISION,
-    popularity DOUBLE PRECISION,
-    poster_path VARCHAR(255),
-    embedding vector(384),
-    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
--- 3. Indexation HNSW
-CREATE INDEX IF NOT EXISTS movies_embedding_hnsw_idx 
-ON movies 
-USING hnsw (embedding vector_cosine_ops);
-```
+2. CD (Build & Déploiement) :
 
-4. Ingestion des Données
+    - Construction de l'image Docker et envoi sécurisé sur le GitHub Container Registry (GHCR).
 
-    Pour charger le dataset et générer les vectorisations depuis la  machine locale vers la base Railway :
-
-    1. Dans le service PostgreSQL sur Railway, aller dans Settings > Networking > Public Networking et cliquer sur Add Public Access.
-
-    2. Redéploiyer le service PostgreSQL si nécessaire pour afficher l'URL publique.
-
-    3. Copier l'URL de connexion publique (DATABASE_PUBLIC_URL).
-
-    4. Créer ou compléter le fichier .env à la racine du projet :
-
-    ```text
-    DATABASE_URL=postgresql://postgres:PASSWORD@REGION.proxyrlwy.   net:PORT/railway  
-    ```
-
-    5. Exécuter le script scripts/extract_tmdb.py pour l'extraction des données
-
-    6. Exécuter le script scripts/ingest_to_db.py pour l'ingestion des données
-
-5. Déploiement de l'Application Streamlit sur Railway
-
-    Dans le même projet Railway, cliquer sur + New > GitHub Repo et sélectionner le dépôt.
-
-    1. Dans les Variables du service Streamlit, connecter la base de données interne :
-
-        - Variable : DATABASE_URL
-
-        - Valeur : ${{Postgres.DATABASE_URL}} (ou ${{Postgres.DATABASE_PRIVATE_URL}})
-
-    2. Ajustr la commande de démarrage (Start Command) dans Settings si nécessaire :
-
-    ```bash
-    streamlit run app.py --server.port $PORT --server.address 0.0.0.0
-    ```
+    - Connexion SSH automatisée à la VM de production (Hetzner) pour récupérer la nouvelle image (docker pull) et redémarrer le conteneur proprement sans interruption majeure.
 
 ## Licence
 Projet sous licence MIT. Libre réutilisation et modification.
