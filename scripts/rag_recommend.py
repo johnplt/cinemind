@@ -21,8 +21,6 @@ def get_db_connection():
         )
 
     db_url = DATABASE_URL
-    if "sslmode=" not in db_url:
-        db_url += "?sslmode=require" if "?" not in db_url else "&sslmode=require"
 
     return psycopg2.connect(db_url)
 
