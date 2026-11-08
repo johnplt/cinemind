@@ -1,6 +1,6 @@
-FROM python:3.12-slim
+FROM python:3.13-slim
 
-# Installer les outils de base si besoin
+# Installer les outils de compilation nécessaires (build-essential pour pyarrow / httptools)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
@@ -13,11 +13,11 @@ WORKDIR /app
 # Copier les fichiers de dépendances
 COPY pyproject.toml uv.lock ./
 
-# Forcer uv à utiliser l'interpréteur python3.12 du système sans en télécharger un autre
-RUN uv sync --frozen --no-cache --python python3.12
+# Synchroniser les dépendances (la version de Python système correspondra à >=3.13)
+RUN uv sync --frozen --no-cache
 
 # Copier le reste du code
 COPY . .
 
-# Lancer streamlit
+# Lancer Streamlit
 CMD [".venv/bin/streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
