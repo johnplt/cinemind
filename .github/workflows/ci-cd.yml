@@ -46,7 +46,7 @@ jobs:
 
   # --- 2. LA PARTIE CD (Build Docker & Déploiement VM) ---
   cd-deploy:
-    needs: ci-checks # <--- LE SECRET EST LÀ : Ce job attend que 'ci-checks' réussisse à 100%
+    needs: ci-checks # Attend impérativement que la CI réussisse
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -55,8 +55,26 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # Indispensable pour comparer le dernier commit avec le précédent
+
+      - name: Check if app files changed
+        id: check_files
+        run: |
+          changed_files=$(git diff --name-only HEAD^ HEAD)
+          echo "Fichiers modifiés : $changed_files"
+          
+          # Si le commit contient des modifications en dehors du dossier dags/
+          if echo "$changed_files" | grep -qv "^dags/"; then
+            echo "app_changed=true" >> $GITHUB_OUTPUT
+            echo "Changements détectés hors des DAGs, on procède au déploiement."
+          else
+            echo "app_changed=false" >> $GITHUB_OUTPUT
+            echo "Seuls les DAGs ont changé, on ignore le déploiement de l'app."
+          fi
 
       - name: Log in to GitHub Container Registry
+        if: steps.check_files.outputs.app_changed == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -64,6 +82,7 @@ jobs:
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Build and push Docker image
+        if: steps.check_files.outputs.app_changed == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -71,6 +90,7 @@ jobs:
           tags: ghcr.io/${{ github.repository }}:latest
 
       - name: Deploy to Hetzner VM via SSH
+        if: steps.check_files.outputs.app_changed == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_HOST }}
