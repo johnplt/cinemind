@@ -1,12 +1,7 @@
 from datetime import datetime, timedelta
 from airflow import DAG
-from airflow.models import Variable
 from airflow.providers.docker.operators.docker import DockerOperator
 
-
-# Récupération sécurisée des secrets depuis le coffre-fort Airflow
-tmdb_key = Variable.get("TMDB_API_KEY")
-hf_token = Variable.get("HF_TOKEN")
 
 default_args = {
     "owner": "airflow",
@@ -38,7 +33,7 @@ with DAG(
         network_mode="app-network",  # Pour garder l'accès au réseau de tes autres services
         mount_tmp_dir=False,
         environment={
-        "TMDB_API_KEY": tmdb_key,
-        "HF_TOKEN": hf_token
+            "TMDB_API_KEY": "{{ var.value.TMDB_API_KEY }}",
+            "HF_TOKEN": "{{ var.value.HF_TOKEN }}"
         }
     )
