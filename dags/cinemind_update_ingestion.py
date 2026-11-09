@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from airflow import DAG
-from airflow.providers.docker.operators.docker import DockerOperator
+from airflow.operators.bash import BashOperator
 
 
 default_args = {
@@ -23,17 +23,15 @@ with DAG(
     tags=["CINEMIND", "PYTHON"],
 ) as dag:
 
-    run_cron_job = DockerOperator(
+    run_cron_job = BashOperator(
         task_id="run_cinemind_ingestion",
-        image="cinemind-app:latest",  # Le nom ou le tag de ton image locale/distante
-        api_version="auto",
-        auto_remove='force',  # Supprime le conteneur après exécution
-        command="uv run scripts/cron_job.py",
-        docker_url="unix://var/run/docker.sock",
-        network_mode="app-network",  # Pour garder l'accès au réseau de tes autres services
-        mount_tmp_dir=False,
-        environment={
-            "TMDB_API_KEY": "{{ var.value.TMDB_API_KEY }}",
-            "HF_TOKEN": "{{ var.value.HF_TOKEN }}"
-        }
+        # On appelle directement Docker en ligne de commande avec injection des variables d'environnement Airflow
+        bash_command="""
+            docker run --rm \
+              --network app-network \
+              -e TMDB_API_KEY="{{ var.value.TMDB_API_KEY }}" \
+              -e HF_TOKEN="{{ var.value.HF_TOKEN }}" \
+              cinemind-app:latest \
+              uv run scripts/cron_job.py
+        """
     )
