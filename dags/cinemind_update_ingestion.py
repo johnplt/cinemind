@@ -31,6 +31,7 @@ with DAG(
               --network app-network \
               -e TMDB_API_KEY="{{ var.value.TMDB_API_KEY }}" \
               -e HF_TOKEN="{{ var.value.HF_TOKEN }}" \
+              -e DATABASE_URL="postgresql://{{ var.value.CINEMIND_DB_USER }}:{{ var.value.CINEMIND_DB_PASSWORD }}@{{ var.value.CINEMIND_DB_HOST }}:5432/{{ var.value.CINEMIND_DB_NAME }}" \
               cinemind-app:latest \
               uv run scripts/cron_job.py
         """
