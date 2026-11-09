@@ -27,7 +27,7 @@ with DAG(
         task_id="run_cinemind_ingestion",
         image="cinemind-app:latest",  # Le nom ou le tag de ton image locale/distante
         api_version="auto",
-        auto_remove=True,
+        auto_remove='force',  # Supprime le conteneur après exécution
         command="uv run scripts/cron_job.py",
         docker_url="unix://var/run/docker.sock",
         network_mode="app-network",  # Pour garder l'accès au réseau de tes autres services
