@@ -13,3 +13,11 @@ dependencies = [
     "requests>=2.34.2",
     "streamlit>=1.64.0"
 ]
+
+
+[tool.semantic_release]
+version_toml = [
+    "pyproject.toml:project.version"
+]
+branch = "main"
+commit_parser = "semantic_release.commit_parser.conventional::ConventionalCommitParser"
