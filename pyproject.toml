@@ -16,8 +16,8 @@ dependencies = [
 
 
 [tool.semantic_release]
-branch = "main"
-commit_parser = "python_semantic_release.commit_parser.conventional.ConventionalCommitParser"
-
-[tool.semantic_release.version_variables]
-"pyproject.toml" = ["project.version"]
+version_toml = [
+    "pyproject.toml:project.version"
+]
+commit_parser = "conventional"
+allow_zero_version = true
