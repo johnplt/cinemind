@@ -98,11 +98,28 @@ jobs:
           script: |
             cd /opt/apps/cinemind
             git pull origin main
+            
+            # 1. Télécharger la nouvelle image
             docker pull ghcr.io/${{ github.repository }}:latest
-            docker stop cinemind-app || true
-            docker rm cinemind-app || true
-            docker run -d --name cinemind-app --restart always -p 8501:8501 --env-file /opt/apps/cinemind/.env --network app-network ghcr.io/${{ github.repository }}.latest
-
+            
+            # 2. Renommer l'ancien conteneur en mode "backup" (s'il existe)
+            if [ "$(docker ps -a -q -f name=cinemind-app)" ]; then
+              docker rename cinemind-app cinemind-app-old || true
+              docker stop cinemind-app-old || true
+            fi
+            
+            # 3. Tenter de lancer le nouveau conteneur
+            if docker run -d --name cinemind-app --restart always -p 8501:8501 --env-file /opt/apps/cinemind/.env --network app-network ghcr.io/${{ github.repository }}:latest; then
+              echo "Déploiement réussi : suppression de l'ancienne version."
+              docker rm cinemind-app-old || true
+            else
+              echo "ERREUR : Le nouveau conteneur a échoué à démarrer. Restauration de l'ancienne version..."
+              docker rm cinemind-app || true
+              docker start cinemind-app-old || true
+              docker rename cinemind-app-old cinemind-app
+              exit 1
+            fi
+            
       # --- NOUVELLE ÉTAPE : CRÉATION DU TAG DE PRODUCTION ---
       - name: Create and push Production Tag
         # S'exécute uniquement si l'application a réellement été déployée et que les étapes d'avant ont réussi
