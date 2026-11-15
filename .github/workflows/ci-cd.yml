@@ -119,6 +119,6 @@ jobs:
       # UNIQUEMENT si le déploiement SSH a réussi (success()), on déclenche le versioning
       - name: Python Semantic Release
         if: steps.check_files.outputs.app_changed == 'true' && success()
-        uses: python-semantic-release/python-semantic-release@v9.16.0
+        uses: python-semantic-release/python-semantic-release@v10.7.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

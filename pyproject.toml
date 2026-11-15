@@ -16,8 +16,10 @@ dependencies = [
 
 
 [tool.semantic_release]
-commit_parser = "conventional"
+version_toml = ["pyproject.toml:project.version"]
 allow_zero_version = true
-version_variables = [
-    "pyproject.toml:project.version"
-]
+tag_format = "v{version}"
+
+[tool.semantic_release.branches.main]
+match = "(main|master)"
+prerelease = false
