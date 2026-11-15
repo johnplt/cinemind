@@ -44,19 +44,19 @@ jobs:
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
 
-  # --- 2. LA PARTIE CD (Build Docker & Déploiement VM) ---
+# --- 2. LA PARTIE CD (Build Docker & Déploiement VM) ---
   cd-deploy:
     needs: ci-checks # Attend impérativement que la CI réussisse
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write   # <-- MODIFIÉ : passé de 'read' à 'write' pour autoriser la création de tags
       packages: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2 # Indispensable pour comparer le dernier commit avec le précédent
+          fetch-depth: 0 # <-- MODIFIÉ : mis à 0 (ou au moins un nombre élevé) pour être sûr de récupérer l'historique complet et les tags existants
 
       - name: Check if app files changed
         id: check_files
@@ -64,7 +64,6 @@ jobs:
           changed_files=$(git diff --name-only HEAD^ HEAD)
           echo "Fichiers modifiés : $changed_files"
           
-          # Si le commit contient des modifications en dehors du dossier dags/
           if echo "$changed_files" | grep -qv "^dags/"; then
             echo "app_changed=true" >> $GITHUB_OUTPUT
             echo "Changements détectés hors des DAGs, on procède au déploiement."
@@ -102,4 +101,28 @@ jobs:
             docker pull ghcr.io/${{ github.repository }}:latest
             docker stop cinemind-app || true
             docker rm cinemind-app || true
-            docker run -d --name cinemind-app --restart always -p 8501:8501 --env-file /opt/apps/cinemind/.env --network app-network ghcr.io/${{ github.repository }}:latest
+            docker run -d --name cinemind-app --restart always -p 8501:8501 --env-file /opt/apps/cinemind/.env --network app-network ghcr.io/${{ github.repository }}.latest
+
+      # --- NOUVELLE ÉTAPE : CRÉATION DU TAG DE PRODUCTION ---
+      - name: Create and push Production Tag
+        # S'exécute uniquement si l'application a réellement été déployée et que les étapes d'avant ont réussi
+        if: steps.check_files.outputs.app_changed == 'true' && success()
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          # Récupère le dernier tag existant (ex: v1.0.2) ou part de v0.0.0 si aucun tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Dernier tag : $LAST_TAG"
+
+          # Incrémente automatiquement le chiffre "Patch" (vX.Y.Z -> vX.Y.Z+1)
+          VERSION_NUM=${LAST_TAG#v}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NUM"
+          NEW_PATCH=$((PATCH + 1))
+          NEW_TAG="v$MAJOR.$MINOR.$NEW_PATCH"
+
+          echo "Nouveau tag de production généré : $NEW_TAG"
+
+          # Crée et pousse le tag sur le dépôt GitHub
+          git tag -a "$NEW_TAG" -m "Production release $NEW_TAG"
+          git push origin "$NEW_TAG"
