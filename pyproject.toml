@@ -20,4 +20,4 @@ version_toml = [
     "pyproject.toml:project.version"
 ]
 branch = "main"
-commit_parser = "semantic_release.commit_parser.conventional::ConventionalCommitParser"
+commit_parser = "python_semantic_release.commit_parser.conventional.ConventionalCommitParser"
